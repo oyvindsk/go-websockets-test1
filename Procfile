@@ -1,1 +1,1 @@
-web: websocket-push
+web: go-websockets-test1
