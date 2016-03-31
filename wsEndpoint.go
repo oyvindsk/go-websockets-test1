@@ -17,99 +17,90 @@ var (
 )
 
 func handleWebsocket(w http.ResponseWriter, r *http.Request) {
+
+	// Deny all but HTTP GET
 	if r.Method != "GET" {
+		log.WithField("method", r.Method).Error("Disallowed http method")
 		http.Error(w, "Method not allowed", 405)
 		return
 	}
 
+	// Upgrade connection to Websocket
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.WithField("err", err).Println("Upgrading to websockets")
+		log.Error("Upgrading to websockets failed:", err)
 		http.Error(w, "Error Upgrading to websockets", 400)
 		return
 	}
 
+	// Get clientname from the url
 	myClientName := path.Base(r.URL.Path)
-	log.Println("New connection from client:", myClientName)
+	log.WithFields(log.Fields{"client": myClientName, "subprotocol": ws.Subprotocol()}).Info("New connection from client")
 
-	// OK websokset connection. Get or create our inbox (a running go routine)
+	// This is an ok websokset connection. Get or create our inbox: the place our messages are stored and a go routine to write those messages to the websocket
+	// First, ask the lookup service for the right inbox. It will be created if it does not exist
 	lreq := lookupRequest{
 		query:  myClientName,
 		result: make(chan inbox),
 	}
 
-	ls.inc <- lreq           // send reques to lookup service, blocking
+	ls.inc <- lreq           // send reques to lookup service, blocking - Does it makes sense to ue a buffered chan here?
 	myInbox := <-lreq.result // wait (block) for response
-	log.Println("Got my inbox:", myInbox.clientName)
 
 	// Hook this ws conection up to the inbox so we get future messages
+	go myInbox.deliverTo(ws) // start a new go routine to run and deliver queued and future messages to this websocket.
 
-	// Get pending messages and send them to the client
-GetMessages:
-	for {
-		select {
-		case msg := <-myInbox.messages:
-			log.Println("stored msg for", myInbox.clientName, msg.Msg)
-		default:
-			log.Println("No stored msg for", myInbox.clientName)
-			break GetMessages
-		}
-	}
+	log.WithField("inbox", myInbox.clientName).Info("Got my inbox")
 
 	// Take messages from the client and send them to X
-	//      lookup to get channle
+	//      lookup to get channel
 	//      put message in channel
-
-	// Take messages from whoever and send them to the client
-	//      connect out inbox channle to the websocket
-
-	//room1.join <- ws
-
 	for {
 		mt, data, err := ws.ReadMessage()
-		ctx := log.Fields{"mt": mt, "data": string(data), "err": err}
 		if err != nil {
 			if err == io.EOF {
-				log.WithFields(ctx).Info("Websocket closed!")
+				log.Info("Websocket closed!")
 			} else {
-				log.WithFields(ctx).Error("Error reading websocket message")
+				log.Error("Error reading websocket message:", err)
 			}
 			break
 		}
-		switch mt {
-		case websocket.TextMessage:
-			log.WithFields(ctx).Println("Read from ws")
 
-			// Decode message
-			// FIXME
-			msg := message{
-				From: "ole",
-				To:   "olga",
-				Msg:  "hello hello hello!",
-				Time: time.Now(),
-			}
-			log.Println("msg:", msg)
-
-			// Lookup who it's for
-			lreq = lookupRequest{
-				query:  msg.To,
-				result: make(chan inbox),
-			}
-
-			ls.inc <- lreq      // send reques to lookup service, blocking
-			to := <-lreq.result // wait (block) for response
-			log.Println("got inbox:", to.clientName)
-
-			// Deliver to channel
-			log.Println("sending message from:", msg.From, "==>", msg.To)
-			to.messages <- msg
-
-			// FIXME : don't block when the abosve channel is full
-
-			ws.WriteMessage(mt, []byte("ok"))
-		default:
-			log.WithFields(ctx).Warning("Unknown Message!")
+		if mt != websocket.TextMessage {
+			log.WithField("mt", mt).Warn("Unknown Message! (Probably binary)")
+			continue
 		}
+
+		log.WithField("msg", data).Debug("Read from ws")
+
+		// Decode message
+		// FIXME
+		msg := message{
+			From: myClientName,
+			To:   "olga",
+			Msg:  "hello hello hello!",
+			Time: time.Now(),
+		}
+		log.WithFields(log.Fields{"from": msg.From, "to": msg.To, "msg": msg.Msg, "time": msg.Time}).Debug("Message for delivery")
+
+		// Lookup who it's for
+		lreq = lookupRequest{
+			query:  msg.To,
+			result: make(chan inbox),
+		}
+
+		ls.inc <- lreq      // send reques to lookup service, blocking
+		to := <-lreq.result // wait (block) for response
+		log.WithField("inbox", to.clientName).Debug("Got inbox for delivery")
+
+		// Deliver to channel
+		log.WithFields(log.Fields{"from": msg.From, "to": msg.To}).Debug("sending message from:", msg.From, "==>", msg.To)
+		to.messages <- msg
+
+		// FIXME : don't block when the abosve channel is full
+
+		// Cant write to the ws in this go routine - ws.WriteMessage(mt, []byte("ok"))
+		myInbox.messages <- message{From: myClientName, To: myClientName, Msg: "OK", Time: time.Now()}
 	}
 
 }

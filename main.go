@@ -17,19 +17,18 @@ type message struct {
 	Time time.Time
 }
 
-// One global room, for now
-//var room1 *room
-
+// One global lookup service
 var ls lookupService
 
 func main() {
+
+    log.SetLevel(log.DebugLevel) // Should this be in init() ?
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		log.WithField("PORT", port).Fatal("$PORT must be set")
 	}
 
-	//room1 = startRoom()
 	ls = startLookupService()
 
 	mux := http.NewServeMux()
@@ -48,5 +47,5 @@ func main() {
 
 func handleAPIHello(w http.ResponseWriter, r *http.Request) {
 	//room1.toAll <- message{Msg: []byte("Hello From the API =)")}
-    log.Fatal("API hello not defined")
+	log.Fatal("API hello not defined")
 }

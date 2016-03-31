@@ -1,25 +1,42 @@
 package main
 
-import "log"
+import (
+	log "github.com/Sirupsen/logrus"
+	"github.com/gorilla/websocket"
+)
 
 type inbox struct {
 	clientName string
 	messages   chan message
+	wsConn     *websocket.Conn
 }
 
 func startInbox(clientName string) inbox {
-	log.Println("Starting new inbox for:", clientName)
+	log.WithField("client", clientName).Info("Starting new inbox")
 
 	inbox := inbox{
 		clientName: clientName,
 		messages:   make(chan message, 20),
 	}
 
-	go inbox.run()
+	//go inbox.run()
 	return inbox
 }
 
-func (i inbox) run() {
+// Take messages from whoever and send them to the client
+func (i inbox) deliverTo(ws *websocket.Conn) {
+
+	log.WithField("client", i.clientName).Info("Writing messages to ws connection")
+	i.wsConn = ws
+
+	for inc := range i.messages {
+		log.WithFields(log.Fields{"client": i.clientName, "msg": inc.Msg}).Debug("Inbox got message")
+		err := ws.WriteMessage(websocket.TextMessage, []byte(inc.Msg))
+		if err != nil {
+			log.WithField("client", i.clientName).Error("error writing message to ws:", err)
+			break
+		}
+	}
 
 	//for {
 	//	select {

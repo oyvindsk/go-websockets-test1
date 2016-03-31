@@ -3,3 +3,7 @@ go get github.com/Sirupsen/logrus
 go get github.com/gorilla/websocket
 
 https://devcenter.heroku.com/articles/go-websockets
+
+WS TextMessage vs Binary ?
+
+REST hello ?
