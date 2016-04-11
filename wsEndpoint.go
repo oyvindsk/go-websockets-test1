@@ -56,36 +56,43 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 	//      lookup to get channel
 	//      put message in channel
 	for {
-		mt, data, err := ws.ReadMessage()
+
+		// Parse the JSON commands from the client
+		cmd := Command{}
+		err := ws.ReadJSON(&cmd) // Blocks!
 		if err != nil {
 			if err == io.EOF {
 				log.Info("Websocket closed!")
+				// FIXME - WHat to do? Does this even work with ReadJSON?
 			} else {
-				log.Error("Error reading websocket message:", err)
+				log.WithField("client", myClientName).Error("Could not parse JSON:", err)
+				myInbox.commands <- Command{Cmd: "Error =(", Msg: &message{Msg: "Err"}}
 			}
-			break
-		}
-
-		if mt != websocket.TextMessage {
-			log.WithField("mt", mt).Warn("Unknown Message! (Probably binary)")
 			continue
 		}
 
-		log.WithField("msg", data).Debug("Read from ws")
+		log.WithField("cmd", cmd).Debug("Read from ws")
 
-		// Decode message
-		// FIXME
-		msg := message{
-			From: myClientName,
-			To:   "olga",
-			Msg:  "hello hello hello!",
-			Time: time.Now(),
+		switch cmd.Cmd {
+		case "msg":
+			if cmd.Msg == nil {
+				log.WithFields(log.Fields{cmd: cmd.Cmd, client: myClientName}).Warning("Msg er NIL")
+				myInbox.commands <- Command{Cmd: "Error =(", Msg: &message{Msg: "Command msg needs Msg"}}
+			} else {
+				log.Printf("Got MSG %+v", cmd.Msg)
+                cmd.Msg.From = myClientName
+                cmd.Msg.Time = time.Now()
+                FIXME sjekk To
+			}
+		default:
+			log.WithField("cmd", cmd.Cmd).Warning("Unknow CMD from client")
 		}
-		log.WithFields(log.Fields{"from": msg.From, "to": msg.To, "msg": msg.Msg, "time": msg.Time}).Debug("Message for delivery")
+
+		log.WithFields(log.Fields{"from": cmd.Msg.From, "to": cmd.Msg.To, "msg": cmd.Msg.Msg, "time": cmd.Msg.Time}).Debug("Message for delivery")
 
 		// Lookup who it's for
 		lreq = lookupRequest{
-			query:  msg.To,
+			query:  cmd.Msg.To,
 			result: make(chan inbox),
 		}
 
@@ -94,13 +101,15 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 		log.WithField("inbox", to.clientName).Debug("Got inbox for delivery")
 
 		// Deliver to channel
-		log.WithFields(log.Fields{"from": msg.From, "to": msg.To}).Debug("sending message from:", msg.From, "==>", msg.To)
-		to.messages <- msg
+		log.WithFields(log.Fields{"from": cmd.Msg.From, "to": cmd.Msg.To}).Debug("sending message from:", cmd.Msg.From, "==>", cmd.Msg.To)
+		//to.messages <- msg
+		to.commands <- cmd
 
 		// FIXME : don't block when the abosve channel is full
 
 		// Cant write to the ws in this go routine - ws.WriteMessage(mt, []byte("ok"))
-		myInbox.messages <- message{From: myClientName, To: myClientName, Msg: "OK", Time: time.Now()}
+		//myInbox.messages <- message{From: myClientName, To: myClientName, Msg: "OK", Time: time.Now()}
+		myInbox.commands <- Command{Msg: &message{From: myClientName, To: myClientName, Msg: "OK", Time: time.Now()}}
 	}
 
 }

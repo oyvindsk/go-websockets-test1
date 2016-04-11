@@ -7,8 +7,9 @@ import (
 
 type inbox struct {
 	clientName string
-	messages   chan message
-	wsConn     *websocket.Conn
+	//messages   chan message
+	commands chan Command
+	wsConn   *websocket.Conn
 }
 
 func startInbox(clientName string) inbox {
@@ -16,7 +17,8 @@ func startInbox(clientName string) inbox {
 
 	inbox := inbox{
 		clientName: clientName,
-		messages:   make(chan message, 20),
+		//messages:   make(chan message, 200),
+		commands: make(chan Command, 200),
 	}
 
 	//go inbox.run()
@@ -29,9 +31,9 @@ func (i inbox) deliverTo(ws *websocket.Conn) {
 	log.WithField("client", i.clientName).Info("Writing messages to ws connection")
 	i.wsConn = ws
 
-	for inc := range i.messages {
+	for inc := range i.commands {
 		log.WithFields(log.Fields{"client": i.clientName, "msg": inc.Msg}).Debug("Inbox got message")
-		err := ws.WriteMessage(websocket.TextMessage, []byte(inc.Msg))
+		err := ws.WriteMessage(websocket.TextMessage, []byte(inc.Msg.Msg))
 		if err != nil {
 			log.WithField("client", i.clientName).Error("error writing message to ws:", err)
 			break

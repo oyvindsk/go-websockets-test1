@@ -9,7 +9,14 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
-// messae represents a single message
+// Command is the data structure used for communicating with the client over websocket
+type Command struct {
+	Cmd string // or another type?
+	//Err error
+	Msg *message
+}
+
+// message represents a single message internally and in the Json
 type message struct {
 	From string
 	To   string
@@ -22,7 +29,7 @@ var ls lookupService
 
 func main() {
 
-    log.SetLevel(log.DebugLevel) // Should this be in init() ?
+	log.SetLevel(log.DebugLevel) // Should this be in init() ?
 
 	port := os.Getenv("PORT")
 	if port == "" {
