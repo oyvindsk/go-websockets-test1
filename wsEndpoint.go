@@ -76,13 +76,13 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 		switch cmd.Cmd {
 		case "msg":
 			if cmd.Msg == nil {
-				log.WithFields(log.Fields{cmd: cmd.Cmd, client: myClientName}).Warning("Msg er NIL")
+				log.WithFields(log.Fields{"cmd": cmd.Cmd, "client": myClientName}).Warning("Msg er NIL")
 				myInbox.commands <- Command{Cmd: "Error =(", Msg: &message{Msg: "Command msg needs Msg"}}
 			} else {
 				log.Printf("Got MSG %+v", cmd.Msg)
-                cmd.Msg.From = myClientName
-                cmd.Msg.Time = time.Now()
-                FIXME sjekk To
+				cmd.Msg.From = myClientName
+				cmd.Msg.Time = time.Now()
+				//FIXME sjekk To
 			}
 		default:
 			log.WithField("cmd", cmd.Cmd).Warning("Unknow CMD from client")

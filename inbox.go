@@ -12,6 +12,7 @@ type inbox struct {
 	wsConn   *websocket.Conn
 }
 
+
 func startInbox(clientName string) inbox {
 	log.WithField("client", clientName).Info("Starting new inbox")
 
