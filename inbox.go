@@ -12,7 +12,6 @@ type inbox struct {
 	wsConn   *websocket.Conn
 }
 
-
 func startInbox(clientName string) inbox {
 	log.WithField("client", clientName).Info("Starting new inbox")
 
@@ -34,10 +33,19 @@ func (i inbox) deliverTo(ws *websocket.Conn) {
 
 	for inc := range i.commands {
 		log.WithFields(log.Fields{"client": i.clientName, "msg": inc.Msg}).Debug("Inbox got message")
-		err := ws.WriteMessage(websocket.TextMessage, []byte(inc.Msg.Msg))
+		var err error
+		switch inc.Cmd {
+		case "msg":
+			err = ws.WriteJSON(inc)
+		case "info":
+			err = ws.WriteJSON(inc)
+		default:
+			log.WithFields(log.Fields{"client": i.clientName, "Cmd": inc.Cmd, "msg": inc.Msg}).Error("Unknown CMD")
+		}
 		if err != nil {
 			log.WithField("client", i.clientName).Error("error writing message to ws:", err)
 			break
+			// todo: disconnect client?
 		}
 	}
 

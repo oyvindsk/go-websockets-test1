@@ -3,10 +3,10 @@ package main
 import (
 	"io"
 	"net/http"
-	"path"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
@@ -34,18 +34,14 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get clientname from the url
-	myClientName := path.Base(r.URL.Path)
+	vars := mux.Vars(r)
+	//myClientName := path.Base(r.URL.Path)
+	myClientName := vars["user"]
 	log.WithFields(log.Fields{"client": myClientName, "subprotocol": ws.Subprotocol()}).Info("New connection from client")
 
 	// This is an ok websokset connection. Get or create our inbox: the place our messages are stored and a go routine to write those messages to the websocket
 	// First, ask the lookup service for the right inbox. It will be created if it does not exist
-	lreq := lookupRequest{
-		query:  myClientName,
-		result: make(chan inbox),
-	}
-
-	ls.inc <- lreq           // send reques to lookup service, blocking - Does it makes sense to ue a buffered chan here?
-	myInbox := <-lreq.result // wait (block) for response
+	myInbox := ls.lookup(myClientName)
 
 	// Hook this ws conection up to the inbox so we get future messages
 	go myInbox.deliverTo(ws) // start a new go routine to run and deliver queued and future messages to this websocket.
@@ -66,7 +62,7 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 				// FIXME - WHat to do? Does this even work with ReadJSON?
 			} else {
 				log.WithField("client", myClientName).Error("Could not parse JSON:", err)
-				myInbox.commands <- Command{Cmd: "Error =(", Msg: &message{Msg: "Err"}}
+				myInbox.commands <- Command{Cmd: "Error =(", Msg: &msg{Msg: "Err"}}
 			}
 			continue
 		}
@@ -77,7 +73,7 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 		case "msg":
 			if cmd.Msg == nil {
 				log.WithFields(log.Fields{"cmd": cmd.Cmd, "client": myClientName}).Warning("Msg er NIL")
-				myInbox.commands <- Command{Cmd: "Error =(", Msg: &message{Msg: "Command msg needs Msg"}}
+				myInbox.commands <- Command{Cmd: "Error =(", Msg: &msg{Msg: "Command msg needs Msg"}}
 			} else {
 				log.Printf("Got MSG %+v", cmd.Msg)
 				cmd.Msg.From = myClientName
@@ -91,13 +87,7 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 		log.WithFields(log.Fields{"from": cmd.Msg.From, "to": cmd.Msg.To, "msg": cmd.Msg.Msg, "time": cmd.Msg.Time}).Debug("Message for delivery")
 
 		// Lookup who it's for
-		lreq = lookupRequest{
-			query:  cmd.Msg.To,
-			result: make(chan inbox),
-		}
-
-		ls.inc <- lreq      // send reques to lookup service, blocking
-		to := <-lreq.result // wait (block) for response
+		to := ls.lookup(cmd.Msg.To) // blocks
 		log.WithField("inbox", to.clientName).Debug("Got inbox for delivery")
 
 		// Deliver to channel
@@ -108,8 +98,7 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 		// FIXME : don't block when the abosve channel is full
 
 		// Cant write to the ws in this go routine - ws.WriteMessage(mt, []byte("ok"))
-		//myInbox.messages <- message{From: myClientName, To: myClientName, Msg: "OK", Time: time.Now()}
-		myInbox.commands <- Command{Msg: &message{From: myClientName, To: myClientName, Msg: "OK", Time: time.Now()}}
+		myInbox.commands <- Command{Cmd: "info", Info: &info{Success: true, Reply: true, Time: time.Now()}}
 	}
 
 }

@@ -44,3 +44,19 @@ func (ls lookupService) run() {
 	}
 
 }
+
+// Helper fuction to make it slightly simpler to look up inboxes
+// ask the lookup service for the right inbox. It will be created if it does not exist
+// FIXME: Should take a pointer, right? Chan's will be copied?
+func (ls lookupService) lookup(q string) inbox {
+
+	lreq := lookupRequest{
+		query:  q,
+		result: make(chan inbox),
+	}
+
+	ls.inc <- lreq       // send reques to lookup service, blocking - Does it makes sense to ue a buffered chan here?
+	box := <-lreq.result // wait (block) for response
+
+	return box
+}
